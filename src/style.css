@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* 主色 */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --secondary: #60a5fa;
+
+  /* 层级背景：background (页面) → surface (次级) → card (模块) → input (输入框) → hover (悬浮) */
+  --background: #eef2f7;
+  --surface: #e9eef5;
+  --card: #ffffff;
+  --input: #f4f6f9;
+  --hover: #eef4ff;
+
+  /* 文字 */
+  --text: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  /* 兼容旧引用（--textSecondary） */
+  --textSecondary: #475569;
+
+  /* 边框与阴影 */
+  --border: #cbd5e1;
+  --border-light: #e2e8f0;
+  --shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+
+  /* 语义色 */
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #0284c7;
+
+  /* 半透明背景（标签底色、悬浮高亮） */
+  --primary-soft: rgba(37, 99, 235, 0.12);
+  --success-soft: rgba(22, 163, 74, 0.12);
+  --warning-soft: rgba(217, 119, 6, 0.12);
+  --danger-soft: rgba(220, 38, 38, 0.12);
+
+  /* 碱基颜色（生物信息视觉编码，跨主题一致） */
+  --base-a: #22c55e;
+  --base-t: #ef4444;
+  --base-c: #3b82f6;
+  --base-g: #eab308;
+
+  /* 动画变量 */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.3s ease;
+  --transition-slow: 0.5s ease;
+
+  /* 统一动画时长（Step 4） */
+  --duration-fast: 0.15s;
+  --duration-normal: 0.25s;
+  --duration-slow: 0.35s;
+
+  /* 统一动画曲线 */
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* 间距变量 */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--background);
+  color: var(--text);
+  transition: background 0.35s ease, color 0.35s ease;
+  font-family: Inter, "Microsoft YaHei", sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+/* ============ 输入框统一样式 ============ */
+input,
+textarea,
+select {
+  background: var(--input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.35s ease;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--textSecondary);
+  opacity: 0.7;
+}
+
+/* ============ 按钮基础样式 ============ */
+button {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-default),
+    border-color var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default),
+    transform var(--duration-fast) var(--ease-default),
+    box-shadow var(--duration-fast) var(--ease-default);
+}
+
+button:hover {
+  background: var(--hover);
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ============ 表格样式 ============ */
+table {
+  background: var(--card);
+  color: var(--text);
+}
+
+table th {
+  background: var(--surface);
+  color: var(--textSecondary);
+}
+
+/* ============ 主题切换动画 ============ */
+/* 仅对主要容器应用主题切换过渡，避免全局 * 影响拖拽和大列表性能 */
+.theme-transition,
+.app-shell,
+.progress-panel,
+.analysis-section,
+.result-section,
+.sequence-section,
+.performance-panel {
+  transition:
+    background-color var(--duration-slow) var(--ease-default),
+    border-color var(--duration-slow) var(--ease-default),
+    color var(--duration-slow) var(--ease-default);
+}
