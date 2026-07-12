@@ -9,9 +9,18 @@ export interface AlignmentConfig {
  * 智能算法选择
  *
  * 根据序列长度自动选择最合适的算法组合：
- * - 短序列 (≤100bp): Sliding + Local
- * - 中序列 (101~1000bp): Local + SnapGene
- * - 长序列 (>1000bp): SnapGene
+ *
+ * 短序列 (≤50bp)：Local + SnapGene + Sliding
+ *   - siRNA/primer/oligo 定位场景
+ *   - Local 优先：快速 seed 定位
+ *   - SnapGene 次之：最终确认 + gap 分析
+ *   - Sliding 兜底：简单匹配验证
+ *
+ * 中短序列 (51-100bp)：Sliding + Local
+ *
+ * 中等序列 (101-1000bp)：Local + SnapGene
+ *
+ * 长序列 (>1000bp)：SnapGene
  *
  * 反向互补检测始终启用。
  */
@@ -28,8 +37,13 @@ export function selectMethods(
   const methods: string[] = []
   const queryLength = query.length
 
-  if (queryLength <= 100) {
-    // 短序列：滑动 + 局部
+  if (queryLength <= 50) {
+    // 短序列定位模式：Local 优先（快速 seed），SnapGene 确认，Sliding 兜底
+    methods.push('Local')
+    methods.push('SnapGene')
+    methods.push('Sliding')
+  } else if (queryLength <= 100) {
+    // 中短序列：滑动 + 局部
     methods.push('Sliding')
     methods.push('Local')
   } else if (queryLength <= 1000) {

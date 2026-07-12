@@ -51,6 +51,8 @@ const autoDetectMethods = computed(() => {
   if (seqStore.query.length === 0) return []
   const first = seqStore.query[0]
   const len = first.sequence.length
+  // 短序列定位模式（siRNA/primer/oligo）：Local + SnapGene + RC
+  if (len <= 50) return ['Local', 'SnapGene', 'Sliding', 'Reverse Complement']
   if (len <= 100) return ['Sliding', 'Local', 'Reverse Complement']
   if (len <= 1000) return ['Local', 'SnapGene', 'Reverse Complement']
   return ['SnapGene', 'Reverse Complement']

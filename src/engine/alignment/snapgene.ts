@@ -5,18 +5,30 @@ import { reverseComplement } from '../sequence/reverseComplement'
 import { calculateCoordinates } from './coordinate'
 import { calculateIdentity } from './statistics'
 
-/** DP 矩阵最大单元格数，超过则跳过 DP（5M ≈ 2236bp × 2236bp） */
-const MAX_DP_CELLS = 5_000_000
+/** DP 矩阵最大单元格数，超过则跳过 DP（10M ≈ 3162bp × 3162bp）
+ *
+ * 短序列定位是核心需求（siRNA/primer/oligo）：
+ * - 21nt Query × 100kb Reference = 2.1M cells（安全）
+ * - 21nt Query × 500kb Reference = 10.5M cells（超限，跳过）
+ */
+const MAX_DP_CELLS = 10_000_000
 
 /** k-mer 相似度阈值，低于此值视为无关序列，跳过 DP */
 const MIN_SIMILARITY = 0.05
 
-/** 长度比例阈值，低于此值视为长度差异过大
+/** 长 Query 长度比例阈值（仅对 Query ≥ 500bp 生效）
  *
- * 半全局模式下，短 Query 可以在长 Reference 中定位，
- * 因此比例阈值设得较低，仅在极端长度差异时跳过
+ * 短 Query（< 50bp）：siRNA/primer/oligo 定位场景，不限制比例
+ * 中等 Query（50-499bp）：正常 DP
+ * 长 Query（≥ 500bp）：启用比例保护，避免无意义 DP
  */
-const MIN_LENGTH_RATIO = 0.01
+const MIN_LENGTH_RATIO_LONG_QUERY = 0.01
+
+/** 短序列阈值（≤50bp 视为短序列定位模式） */
+const SHORT_QUERY_THRESHOLD = 50
+
+/** 长 Query 阈值（≥500bp 启用长度比例保护） */
+const LONG_QUERY_THRESHOLD = 500
 
 /** 生成零分结果（预筛选跳过 / 长序列保护 / 长度差异） */
 function zeroResult(reference: string, query: string): AlignmentResult {
@@ -43,10 +55,38 @@ function zeroResult(reference: string, query: string): AlignmentResult {
   }
 }
 
-/** 评分参数 */
+/** 评分参数（默认值，中等长度序列）
+ *
+ * 短序列会在 getScoringParams 中被覆盖为更严格的参数
+ */
 const MATCH = 2
 const MISMATCH = -1
 const GAP = -1
+
+/** 短序列评分参数（Query ≤ 50bp）
+ *
+ * 短序列（siRNA/primer/oligo）场景：
+ * - 精确匹配最重要：match=3（提高匹配奖励）
+ * - 错配严重：mismatch=-2（加重错配惩罚）
+ * - 避免 gap：gap=-1（轻微惩罚，不强烈回避）
+ *
+ * 这样 21nt 完全匹配 = 63 分，远高于含 gap 的结果
+ */
+const SHORT_MATCH = 3
+const SHORT_MISMATCH = -2
+const SHORT_GAP = -1
+
+/** 根据 Query 长度返回评分参数 */
+function getScoringParams(queryLength: number): {
+  match: number
+  mismatch: number
+  gap: number
+} {
+  if (queryLength <= SHORT_QUERY_THRESHOLD) {
+    return { match: SHORT_MATCH, mismatch: SHORT_MISMATCH, gap: SHORT_GAP }
+  }
+  return { match: MATCH, mismatch: MISMATCH, gap: GAP }
+}
 
 /** 综合评分：用于正向/反向互补结果比较 */
 function alignmentScore(result: {
@@ -72,7 +112,6 @@ function alignmentScore(result: {
 function snapgeneCore(
   reference: string,
   query: string,
-  gapPenalty: number,
 ): Omit<AlignmentResult, 'id' | 'referenceName' | 'queryName' | 'referenceSequence' | 'querySequence' | 'method' | 'referenceId' | 'queryId'> {
   const ref = reference.toUpperCase()
   const qry = query.toUpperCase()
@@ -80,11 +119,17 @@ function snapgeneCore(
   const m = ref.length
   const n = qry.length
 
+  // 根据 Query 长度动态选择评分参数
+  const { match: MATCH_P, mismatch: MISMATCH_P, gap: GAP_P } = getScoringParams(n)
+  const isShortMode = n <= SHORT_QUERY_THRESHOLD
+
   console.log('[SnapGene] input', {
     referenceLength: m,
     queryLength: n,
     reference: ref.slice(0, 100),
     query: qry.slice(0, 100),
+    mode: isShortMode ? 'short' : 'normal',
+    scoring: { match: MATCH_P, mismatch: MISMATCH_P, gap: GAP_P },
   })
 
   // =========================
@@ -108,7 +153,7 @@ function snapgeneCore(
     dp[i][0] = 0
   }
   for (let j = 1; j <= n; j++) {
-    dp[0][j] = j * gapPenalty
+    dp[0][j] = j * GAP_P
   }
 
   // =========================
@@ -116,12 +161,12 @@ function snapgeneCore(
   // =========================
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
-      const matchScore = ref[i - 1] === qry[j - 1] ? MATCH : MISMATCH
+      const matchScore = ref[i - 1] === qry[j - 1] ? MATCH_P : MISMATCH_P
 
       dp[i][j] = Math.max(
         dp[i - 1][j - 1] + matchScore,
-        dp[i - 1][j] + gapPenalty,
-        dp[i][j - 1] + gapPenalty,
+        dp[i - 1][j] + GAP_P,
+        dp[i][j - 1] + GAP_P,
       )
     }
   }
@@ -129,7 +174,6 @@ function snapgeneCore(
   // =========================
   // 回溯：从最后一行最高分位置开始
   // =========================
-  // 找到最后一行中得分最高的列（即 Reference 上的最佳结束位置）
   let maxScore = -Infinity
   let bestI = m
   for (let i = 1; i <= m; i++) {
@@ -151,10 +195,9 @@ function snapgeneCore(
   let alignedReference = ''
   let alignedQuery = ''
 
-  // 回溯到 Query 开头（j === 0）即可，Reference 端允许悬空
   while (j > 0) {
     if (i > 0 && j > 0) {
-      const score = ref[i - 1] === qry[j - 1] ? MATCH : MISMATCH
+      const score = ref[i - 1] === qry[j - 1] ? MATCH_P : MISMATCH_P
 
       if (dp[i][j] === dp[i - 1][j - 1] + score) {
         alignedReference = ref[i - 1] + alignedReference
@@ -165,7 +208,7 @@ function snapgeneCore(
       }
     }
 
-    if (i > 0 && dp[i][j] === dp[i - 1][j] + gapPenalty) {
+    if (i > 0 && dp[i][j] === dp[i - 1][j] + GAP_P) {
       alignedReference = ref[i - 1] + alignedReference
       alignedQuery = '-' + alignedQuery
       i--
@@ -307,7 +350,7 @@ export function snapgeneAlignment(
   }
 
   // =========================
-  // 长序列保护
+  // 长序列保护（DP 矩阵大小限制）
   // =========================
   if (reference.length * query.length > MAX_DP_CELLS) {
     console.warn('[SnapGene] 跳过: 长序列保护', { refLen: reference.length, qryLen: query.length, cells: reference.length * query.length, max: MAX_DP_CELLS })
@@ -315,18 +358,32 @@ export function snapgeneAlignment(
   }
 
   // =========================
-  // 长度比例保护
+  // 长度比例保护（仅对长 Query 生效）
+  //
+  // 短 Query（< 50bp）：siRNA/primer/oligo 定位场景，不限制比例
+  // 中等 Query（50-499bp）：正常 DP
+  // 长 Query（≥ 500bp）：启用比例保护，避免无意义 DP
   // =========================
-  const lengthRatio =
-    Math.min(reference.length, query.length) /
-    Math.max(reference.length, query.length)
-  if (lengthRatio < MIN_LENGTH_RATIO) {
-    console.warn('[SnapGene] 跳过: 长度比例过小', { refLen: reference.length, qryLen: query.length, ratio: lengthRatio, min: MIN_LENGTH_RATIO })
-    return zeroResult(reference, query)
+  if (query.length >= LONG_QUERY_THRESHOLD) {
+    const ratio = query.length / reference.length
+    if (ratio < MIN_LENGTH_RATIO_LONG_QUERY) {
+      console.warn('[SnapGene] 跳过: 长 Query 比例过小', {
+        refLen: reference.length,
+        qryLen: query.length,
+        ratio,
+        min: MIN_LENGTH_RATIO_LONG_QUERY,
+      })
+      return zeroResult(reference, query)
+    }
+  } else if (query.length <= SHORT_QUERY_THRESHOLD) {
+    console.log('[SnapGene] short sequence mode', {
+      referenceLength: reference.length,
+      queryLength: query.length,
+    })
   }
 
   // =========================
-  // k-mer 预筛选（仅长序列，短序列必须进入 DP）
+  // k-mer 预筛选（仅长 Query，短序列必须进入 DP）
   // =========================
   if (query.length >= 100) {
     const kmerSim = kmerSimilarity(reference.toUpperCase(), query.toUpperCase())
@@ -339,13 +396,13 @@ export function snapgeneAlignment(
   // =========================
   // 正向比对
   // =========================
-  const normal = snapgeneCore(reference, query, GAP)
+  const normal = snapgeneCore(reference, query)
 
   // =========================
   // 反向互补比对
   // =========================
   const rcQuery = reverseComplement(query)
-  const rc = snapgeneCore(reference, rcQuery, GAP)
+  const rc = snapgeneCore(reference, rcQuery)
 
   // =========================
   // 方向判断：基于综合评分取更优
