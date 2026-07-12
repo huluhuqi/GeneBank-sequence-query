@@ -16,16 +16,17 @@ export function removeDuplicateResults(
   const map = new Map<string, AlignmentResult>()
 
   for (const r of results) {
-    // key 包含位置坐标和方向，避免不同位置结果被错误合并
+    // key 包含位置坐标、方向和质量指标，避免不同位置结果被错误合并
+    // 坐标在前，确保不同位置的结果一定保留
     const key = [
-      r.identity,
-      r.match,
-      r.mismatch,
-      r.gap,
       r.referenceStart,
       r.referenceEnd,
       r.queryStart,
       r.queryEnd,
+      r.identity,
+      r.match,
+      r.mismatch,
+      r.gap,
       r.orientation,
     ].join('_')
     const existing = map.get(key)

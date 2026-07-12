@@ -10,7 +10,7 @@ export const useResultStore = defineStore('result', {
     selectedResult: null as AlignmentResult | null,
 
     keyword: '',
-    sortField: 'score' as keyof AlignmentResult,
+    sortField: 'qualityScore' as keyof AlignmentResult,
     sortOrder: 'desc' as 'asc' | 'desc',
     showAdvanced: false,
 
