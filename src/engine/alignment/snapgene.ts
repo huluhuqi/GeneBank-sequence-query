@@ -213,9 +213,25 @@ function snapgeneCore(
     referenceEnd: bestI,
     queryStart: 0,
     queryEnd: n,
-    alignedReference,
-    alignedQuery,
+    alignedReference: alignedReference.length > 80 ? alignedReference.slice(0, 80) + '...' : alignedReference,
+    alignedQuery: alignedQuery.length > 80 ? alignedQuery.slice(0, 80) + '...' : alignedQuery,
+    lengthRef: alignedReference.length,
+    lengthQuery: alignedQuery.length,
     maxScore,
+    tracebackStartI: bestI,
+    tracebackEndI: i,
+  })
+
+  console.log('[SnapGene alignment]', {
+    alignedReference: alignedReference.length > 200 ? alignedReference.slice(0, 200) + '...' : alignedReference,
+    alignedQuery: alignedQuery.length > 200 ? alignedQuery.slice(0, 200) + '...' : alignedQuery,
+    lengthRef: alignedReference.length,
+    lengthQuery: alignedQuery.length,
+    score: maxScore,
+    match,
+    mismatch,
+    gap,
+    identity,
   })
 
   // 空结果保护
@@ -294,6 +310,7 @@ export function snapgeneAlignment(
   // 长序列保护
   // =========================
   if (reference.length * query.length > MAX_DP_CELLS) {
+    console.warn('[SnapGene] 跳过: 长序列保护', { refLen: reference.length, qryLen: query.length, cells: reference.length * query.length, max: MAX_DP_CELLS })
     return zeroResult(reference, query)
   }
 
@@ -304,6 +321,7 @@ export function snapgeneAlignment(
     Math.min(reference.length, query.length) /
     Math.max(reference.length, query.length)
   if (lengthRatio < MIN_LENGTH_RATIO) {
+    console.warn('[SnapGene] 跳过: 长度比例过小', { refLen: reference.length, qryLen: query.length, ratio: lengthRatio, min: MIN_LENGTH_RATIO })
     return zeroResult(reference, query)
   }
 
@@ -313,6 +331,7 @@ export function snapgeneAlignment(
   if (query.length >= 100) {
     const kmerSim = kmerSimilarity(reference.toUpperCase(), query.toUpperCase())
     if (kmerSim < MIN_SIMILARITY) {
+      console.warn('[SnapGene] 跳过: k-mer 相似度过低', { kmerSim, min: MIN_SIMILARITY })
       return zeroResult(reference, query)
     }
   }
