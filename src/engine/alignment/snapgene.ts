@@ -300,8 +300,19 @@ function snapgeneCore(
     }
   }
 
-  // 计算真实坐标（基于 alignment 字符串）
+  // 计算真实坐标（基于 alignment 字符串，1-based）
   const coords = calculateCoordinates(alignedReference, alignedQuery)
+
+  console.log('[SnapGene coordinate]', {
+    start: coords.referenceStart,
+    end: coords.referenceEnd,
+    length: coords.referenceEnd - coords.referenceStart + 1,
+    queryStart: coords.queryStart,
+    queryEnd: coords.queryEnd,
+    dpTracebackStartI: bestI,
+    dpTracebackEndI: i,
+    note: 'coords 为 1-based，dp 索引为 0-based',
+  })
 
   return {
     alignedReference,
