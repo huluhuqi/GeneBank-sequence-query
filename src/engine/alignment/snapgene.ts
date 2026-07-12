@@ -11,8 +11,12 @@ const MAX_DP_CELLS = 5_000_000
 /** k-mer 相似度阈值，低于此值视为无关序列，跳过 DP */
 const MIN_SIMILARITY = 0.05
 
-/** 长度比例阈值，低于此值视为长度差异过大 */
-const MIN_LENGTH_RATIO = 0.1
+/** 长度比例阈值，低于此值视为长度差异过大
+ *
+ * 半全局模式下，短 Query 可以在长 Reference 中定位，
+ * 因此比例阈值设得较低，仅在极端长度差异时跳过
+ */
+const MIN_LENGTH_RATIO = 0.01
 
 /** 生成零分结果（预筛选跳过 / 长序列保护 / 长度差异） */
 function zeroResult(reference: string, query: string): AlignmentResult {
@@ -40,9 +44,9 @@ function zeroResult(reference: string, query: string): AlignmentResult {
 }
 
 /** 评分参数 */
-const MATCH = 3
-const MISMATCH = -2
-const GAP = -5
+const MATCH = 2
+const MISMATCH = -1
+const GAP = -1
 
 /** 综合评分：用于正向/反向互补结果比较 */
 function alignmentScore(result: {
@@ -57,7 +61,14 @@ function alignmentScore(result: {
   )
 }
 
-/** 核心 DP 比对（不含预筛选 / 缓存 / 方向判断） */
+/** 核心 DP 比对（不含预筛选 / 缓存 / 方向判断）
+ *
+ * 采用半全局比对（semi-global alignment）：
+ * - Reference 端可以自由移位（第 0 行初始化为 0）
+ * - Query 必须完全对齐（第 0 列初始化为 gap penalty）
+ * - 回溯起点：最后一行中得分最高的位置
+ * - 适合场景：短 Query 在长 Reference 中定位（引物、探针、小片段验证）
+ */
 function snapgeneCore(
   reference: string,
   query: string,
@@ -69,16 +80,32 @@ function snapgeneCore(
   const m = ref.length
   const n = qry.length
 
+  console.log('[SnapGene] input', {
+    referenceLength: m,
+    queryLength: n,
+    reference: ref.slice(0, 100),
+    query: qry.slice(0, 100),
+  })
+
   // =========================
   // DP 矩阵
   // =========================
+  console.log('[SnapGene] DP size', {
+    rows: m + 1,
+    cols: n + 1,
+    cells: (m + 1) * (n + 1),
+  })
+
   const dp: number[][] = Array.from(
     { length: m + 1 },
     () => new Array<number>(n + 1).fill(0),
   )
 
+  // 半全局模式：
+  // - 第 0 行：Reference 端自由移位，全部为 0
+  // - 第 0 列：Query 端必须对齐，施加 gap penalty
   for (let i = 1; i <= m; i++) {
-    dp[i][0] = i * gapPenalty
+    dp[i][0] = 0
   }
   for (let j = 1; j <= n; j++) {
     dp[0][j] = j * gapPenalty
@@ -100,15 +127,32 @@ function snapgeneCore(
   }
 
   // =========================
-  // 回溯生成 alignment
+  // 回溯：从最后一行最高分位置开始
   // =========================
-  let i = m
+  // 找到最后一行中得分最高的列（即 Reference 上的最佳结束位置）
+  let maxScore = -Infinity
+  let bestI = m
+  for (let i = 1; i <= m; i++) {
+    if (dp[i][n] > maxScore) {
+      maxScore = dp[i][n]
+      bestI = i
+    }
+  }
+
+  console.log('[SnapGene] traceback start', {
+    bestI,
+    j: n,
+    maxScore,
+  })
+
+  let i = bestI
   let j = n
 
   let alignedReference = ''
   let alignedQuery = ''
 
-  while (i > 0 || j > 0) {
+  // 回溯到 Query 开头（j === 0）即可，Reference 端允许悬空
+  while (j > 0) {
     if (i > 0 && j > 0) {
       const score = ref[i - 1] === qry[j - 1] ? MATCH : MISMATCH
 
@@ -160,13 +204,50 @@ function snapgeneCore(
     ? Number((((match + mismatch * 0.5) / (match + mismatch)) * 100).toFixed(2))
     : 0
 
+  console.log('[SnapGene] final', {
+    match,
+    mismatch,
+    gap,
+    identity,
+    referenceStart: i,
+    referenceEnd: bestI,
+    queryStart: 0,
+    queryEnd: n,
+    alignedReference,
+    alignedQuery,
+    maxScore,
+  })
+
+  // 空结果保护
+  if (
+    !alignedReference ||
+    !alignedQuery ||
+    alignedReference.length === 0 ||
+    alignedQuery.length === 0
+  ) {
+    return {
+      identity: 0,
+      match: 0,
+      mismatch: 0,
+      gap: 0,
+      score: 0,
+      referenceStart: 0,
+      referenceEnd: 0,
+      queryStart: 0,
+      queryEnd: 0,
+      alignedReference: '',
+      alignedQuery: '',
+      similarity: 0,
+    }
+  }
+
   // 计算真实坐标（基于 alignment 字符串）
   const coords = calculateCoordinates(alignedReference, alignedQuery)
 
   return {
     alignedReference,
     alignedQuery,
-    score: dp[m][n],
+    score: maxScore,
     identity,
     match,
     mismatch,
