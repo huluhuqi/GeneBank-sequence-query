@@ -150,7 +150,7 @@ const totalWidth = computed(() => {
             ref="virtualListRef"
           >
             <template #default="{ item, index, active }">
-              <DynamicScrollerItem :item="item" :active="active" :size-dependencies="[item.id]" :data-index="index">
+              <DynamicScrollerItem :item="item" :active="active" :data-index="index">
                 <ResultRow
                   :item="item"
                   :index="index"
@@ -175,7 +175,7 @@ const totalWidth = computed(() => {
           ref="mobileScrollerRef"
         >
           <template #default="{ item, index, active }">
-            <DynamicScrollerItem :item="item" :active="active" :size-dependencies="[item.id, store.showAdvanced]" :data-index="index">
+            <DynamicScrollerItem :item="item" :active="active" :data-index="index">
               <div class="card-wrapper">
                 <ResultCard
                   :item="item"

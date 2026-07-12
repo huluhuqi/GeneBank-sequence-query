@@ -97,7 +97,6 @@ function onDragLeave() {
         <DynamicScrollerItem
           :item="item"
           :active="active"
-          :size-dependencies="[item.id, item.sequence, isSelected(item.id)]"
           :data-index="index"
         >
           <div class="card-wrapper">
