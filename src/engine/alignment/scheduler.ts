@@ -4,6 +4,7 @@ import { WorkerPool } from '../../utils/workerPool'
 import { clearCache as clearSnapgeneCache } from './cache'
 import type { AlignmentConfig } from './alignmentManager'
 import type { WorkerResponse, WorkerDone } from '../../workers/alignment.worker'
+import workerUrl from '../../workers/alignment.worker.ts?worker&url'
 
 export interface SchedulerProgress {
   current: number
@@ -79,9 +80,7 @@ export class AlignmentScheduler {
     const useWorker = typeof Worker !== 'undefined'
     try {
       if (useWorker) {
-        this.workerPool = new WorkerPool(
-          new URL('../../workers/alignment.worker.ts', import.meta.url),
-        )
+        this.workerPool = new WorkerPool(new URL(workerUrl, import.meta.url))
         this.workerPool.start()
         await this.runWithWorkerPool()
       } else {
