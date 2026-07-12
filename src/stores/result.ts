@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { AlignmentResult } from '../types/alignment'
+import { compareAlignmentResults } from '../engine/alignment/scoring'
 
 /** 方法筛选类型：'all' 或具体算法名 */
 export type MethodFilter = 'all' | 'Sliding' | 'Local' | 'Reverse Complement' | 'SnapGene'
@@ -65,6 +66,20 @@ export const useResultStore = defineStore('result', {
     sortedResults(): AlignmentResult[] {
       const data = [...this.filteredResults]
       const best = this.bestResult
+
+      // 当按 qualityScore 排序时，使用 BLAST-like 多级排序
+      if (this.sortField === 'qualityScore') {
+        return data.sort((a, b) => {
+          // bestResult 始终排第一
+          if (best) {
+            if (a.id === best.id) return -1
+            if (b.id === best.id) return 1
+          }
+          return compareAlignmentResults(a, b)
+        })
+      }
+
+      // 其他字段使用单字段排序
       const field = this.sortField
       const order = this.sortOrder === 'desc' ? -1 : 1
 
@@ -84,7 +99,7 @@ export const useResultStore = defineStore('result', {
 
     bestResult(state): AlignmentResult | null {
       if (state.results.length === 0) return null
-      return [...state.results].sort((a, b) => (b.qualityScore ?? 0) - (a.qualityScore ?? 0))[0]
+      return [...state.results].sort(compareAlignmentResults)[0]
     },
   },
 
