@@ -2,16 +2,21 @@
 export function compareSequence(a: string, b: string) {
   let match = 0
   let mismatch = 0
+  let gap = 0
 
   for (let i = 0; i < a.length; i++) {
-    if (a[i] === b[i]) {
+    const aBase = a[i]
+    const bBase = b[i]
+
+    if (aBase === '-' || bBase === '-') {
+      gap++
+    } else if (aBase === bBase) {
       match++
     } else {
       mismatch++
     }
   }
 
-  const gap = 0
   return {
     match,
     mismatch,
@@ -23,22 +28,20 @@ export function compareSequence(a: string, b: string) {
 /**
  * 统一生物学 identity 计算
  *
- * 公式：match / (match + mismatch) × 100
+ * 公式：match / (match + mismatch + gap) × 100
  *
- * gap 不参与分母，仅反映匹配区域内的替换率。
- * 这样 SnapGene（含 gap）与 Sliding/Local（无 gap）的 identity 可比。
+ * gap 参与分母：含 gap 的比对区域，gap 占据对齐位置，应降低 identity。
  *
- * - match=18, mismatch=0, gap=5 → identity=100%（匹配区域内无错配）
- * - match=10, mismatch=2, gap=0 → identity=83.33%
+ * - match=21, mismatch=0, gap=12 → identity=63.64%
+ * - match=18, mismatch=0, gap=5  → identity=78.26%
+ * - match=10, mismatch=2, gap=0  → identity=83.33%
  */
 export function calculateIdentity(
   match: number,
   mismatch: number,
   gap: number,
 ): number {
-  void gap // gap 不参与生物学 identity 计算
-
-  const aligned = match + mismatch
+  const aligned = match + mismatch + gap
 
   if (aligned === 0) {
     return 0

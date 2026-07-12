@@ -51,6 +51,7 @@ function complexityPenalty(sequence: string | undefined): number {
  *   finalScore    = (rawScore + identityScore + coverageScore) × methodWeight
  *                   + shortSequenceBonus
  *                   + complexityPenalty
+ *                   + circularBonus（环状跨 origin 命中 +8）
  *
  * - rawScore：BLAST 风格的原始得分，match 加分多，gap 惩罚最重
  * - identity 贡献 70%（匹配区域内的替换率）
@@ -58,6 +59,7 @@ function complexityPenalty(sequence: string | undefined): number {
  * - 算法权重：SnapGene > Local ≈ RC > Sliding
  * - 短序列奖励：避免短序列因天然低 coverage 被低估
  * - 低复杂度惩罚：防止 poly-A / poly-T 假命中
+ * - 环状奖励：质粒跨 origin 的 primer/feature 定位应优先
  *
  * 不限制 0-100 范围（BLAST bit score 可超过 100）
  */
@@ -88,6 +90,12 @@ export function calculateQualityScore(result: AlignmentResult): number {
 
   // 7. 低复杂度惩罚
   finalScore += complexityPenalty(result.querySequence)
+
+  // 8. 环状序列跨 origin 奖励
+  // 质粒 DNA 跨 origin 的 primer/feature 定位在生物学上意义更大，应优先于普通线性命中
+  if (result.circular) {
+    finalScore += 8
+  }
 
   return Number(finalScore.toFixed(2))
 }

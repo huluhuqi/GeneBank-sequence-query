@@ -2,8 +2,9 @@
 import { computed } from 'vue'
 import { useResultStore } from '../../stores/result'
 import { useSequenceStore } from '../../stores/sequence'
-import { compareAlignment, getMismatchPositions } from '../../utils/alignmentHighlight'
+import { getMismatchPositions } from '../../utils/alignmentHighlight'
 import { reverseComplement } from '../../engine/sequence/reverseComplement'
+import { calculateCoverage } from '../../engine/alignment/statistics'
 import { useI18n } from '../../i18n'
 
 const resultStore = useResultStore()
@@ -66,10 +67,22 @@ const alignmentData = computed(() => {
   }
 })
 
-// 碱基级对比
-const basePairs = computed(() => {
-  if (!alignmentData.value) return []
-  return compareAlignment(alignmentData.value.refSeq, alignmentData.value.querySeq)
+// 生成匹配线
+const matchLine = computed(() => {
+  if (!alignmentData.value) return ''
+  const refSeq = alignmentData.value.refSeq
+  const querySeq = alignmentData.value.querySeq
+  let line = ''
+  for (let i = 0; i < refSeq.length; i++) {
+    if (refSeq[i] === '-' || querySeq[i] === '-') {
+      line += ' '
+    } else if (refSeq[i] === querySeq[i]) {
+      line += '|'
+    } else {
+      line += ' '
+    }
+  }
+  return line
 })
 
 // 错配位置列表
@@ -83,6 +96,37 @@ function identityColor(val: number): string {
   if (val >= 50) return 'var(--warning)'
   return 'var(--danger)'
 }
+
+function getBaseClass(index: number): string {
+  if (!alignmentData.value) return ''
+  const refBase = alignmentData.value.refSeq[index]
+  const queryBase = alignmentData.value.querySeq[index]
+  if (refBase === queryBase) {
+    return 'match-base'
+  }
+  if (refBase === '-' || queryBase === '-') {
+    return 'gap-base'
+  }
+  return 'mismatch-base'
+}
+
+function getMatchClass(base: string): string {
+  if (base === '|') {
+    return 'match-symbol'
+  }
+  if (base === ' ') {
+    return 'gap-symbol'
+  }
+  return 'mismatch-symbol'
+}
+
+// Query 覆盖率
+const queryCoverage = computed(() => {
+  if (!item.value) return 0
+  const qryLen = item.value.querySequence?.length ?? 0
+  return calculateCoverage(qryLen, item.value.match, item.value.mismatch)
+})
+
 </script>
 
 <template>
@@ -93,11 +137,11 @@ function identityColor(val: number): string {
     <div class="info-grid">
       <div class="info-item">
         <span class="info-label">{{ t.result.referenceLabel }}</span>
-        <span class="info-value">{{ alignmentData?.refName || item.referenceName }}</span>
+        <span class="info-value sequence-name">{{ alignmentData?.refName || item.referenceName }}</span>
       </div>
       <div class="info-item">
         <span class="info-label">{{ t.result.queryLabel }}</span>
-        <span class="info-value">{{ alignmentData?.queryName || item.queryName }}</span>
+        <span class="info-value sequence-name">{{ alignmentData?.queryName || item.queryName }}</span>
       </div>
       <div class="info-item">
         <span class="info-label">{{ t.result.methodLabel }}</span>
@@ -120,6 +164,12 @@ function identityColor(val: number): string {
         </span>
       </div>
       <div class="info-item">
+        <span class="info-label">{{ t.result.gapLabel }}</span>
+        <span class="info-value font-mono" :class="item.gap > 0 ? 'gap-text' : ''">
+          {{ item.gap }}
+        </span>
+      </div>
+      <div class="info-item">
         <span class="info-label">{{ t.result.refRangeLabel }}</span>
         <span class="info-value font-mono">{{ item.referenceStart }} - {{ item.referenceEnd }}</span>
       </div>
@@ -127,47 +177,48 @@ function identityColor(val: number): string {
         <span class="info-label">{{ t.result.scoreLabel }}</span>
         <span class="info-value font-mono">{{ item.score }}</span>
       </div>
+      <div class="info-item">
+        <span class="info-label">{{ t.result.queryCoverageLabel }}</span>
+        <span class="info-value font-mono">{{ queryCoverage }}%</span>
+      </div>
     </div>
 
     <!-- 对齐序列可视化 -->
     <div v-if="alignmentData" class="alignment-section">
-      <div class="alignment-track">
-        <!-- Reference -->
-        <div class="track-row">
-          <span class="track-label">Ref</span>
-          <div class="track-sequence">
+      <div class="alignment-box">
+        <!-- Ref -->
+        <div class="alignment-row">
+          <div class="alignment-label">Ref</div>
+          <div class="alignment-sequence">
             <span
-              v-for="(bp, i) in basePairs"
-              :key="i"
-              class="base"
-              :class="{ 'base-match': bp.match, 'base-mismatch': !bp.match && !bp.isGap, 'base-gap': bp.isGap }"
-            >{{ bp.refBase }}</span>
+              v-for="(base, index) in alignmentData.refSeq"
+              :key="'ref-' + index"
+              :class="getBaseClass(index)"
+            >{{ base }}</span>
           </div>
         </div>
 
-        <!-- 匹配线 -->
-        <div class="track-row">
-          <span class="track-label"></span>
-          <div class="track-sequence">
+        <!-- Match -->
+        <div class="alignment-row">
+          <div class="alignment-label"></div>
+          <div class="alignment-sequence match-line">
             <span
-              v-for="(bp, i) in basePairs"
-              :key="i"
-              class="match-mark"
-              :class="{ 'mark-match': bp.match, 'mark-mismatch': !bp.match && !bp.isGap, 'mark-gap': bp.isGap }"
-            >{{ bp.match ? '|' : (bp.isGap ? '-' : ' ') }}</span>
+              v-for="(base, index) in matchLine"
+              :key="'match-' + index"
+              :class="getMatchClass(base)"
+            >{{ base }}</span>
           </div>
         </div>
 
         <!-- Query -->
-        <div class="track-row">
-          <span class="track-label">Query</span>
-          <div class="track-sequence">
+        <div class="alignment-row">
+          <div class="alignment-label">Query</div>
+          <div class="alignment-sequence">
             <span
-              v-for="(bp, i) in basePairs"
-              :key="i"
-              class="base"
-              :class="{ 'base-match': bp.match, 'base-mismatch': !bp.match && !bp.isGap, 'base-gap': bp.isGap }"
-            >{{ bp.queryBase }}</span>
+              v-for="(base, index) in alignmentData.querySeq"
+              :key="'qry-' + index"
+              :class="getBaseClass(index)"
+            >{{ base }}</span>
           </div>
         </div>
       </div>
@@ -200,6 +251,7 @@ function identityColor(val: number): string {
   border-radius: 14px;
   padding: 20px;
   background: var(--card);
+  overflow: hidden;
 }
 
 .viewer-title {
@@ -217,10 +269,11 @@ function identityColor(val: number): string {
 }
 
 .info-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 0;
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 8px 0;
   border-bottom: 1px solid var(--border);
   font-size: 13px;
 }
@@ -232,10 +285,16 @@ function identityColor(val: number): string {
 .info-value {
   font-weight: 500;
   color: var(--text);
-  max-width: 60%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.sequence-name {
+  max-width: 260px;
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 
 .mismatch-text {
@@ -243,83 +302,84 @@ function identityColor(val: number): string {
   font-weight: 600;
 }
 
+.gap-text {
+  color: var(--warning);
+  font-weight: 600;
+}
+
 .alignment-section {
   margin-top: 8px;
 }
 
-.alignment-track {
-  padding: 16px;
+.alignment-box {
+  width: 100%;
+  overflow-x: auto;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow-x: auto;
+  border-radius: 12px;
+  padding: 20px;
+  font-family: 'Courier New', monospace;
 }
 
-.track-row {
+.alignment-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 2px;
+  align-items: flex-start;
+  margin-bottom: 12px;
 }
 
-.track-label {
-  flex-shrink: 0;
-  width: 40px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--textSecondary);
-  text-align: right;
+.alignment-row:last-child {
+  margin-bottom: 0;
 }
 
-.track-sequence {
-  display: flex;
-  flex-wrap: wrap;
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.base {
-  display: inline-block;
-  width: 16px;
-  text-align: center;
-  border-radius: 2px;
-  transition: background 0.15s ease;
-}
-
-.base-match {
-  color: var(--text);
-}
-
-.base-mismatch {
-  color: var(--danger);
-  background: var(--danger-soft);
+.alignment-label {
+  width: 60px;
+  flex: none;
   font-weight: 700;
-}
-
-.base-gap {
   color: var(--textSecondary);
-  background: var(--surface);
 }
 
-.match-mark {
-  display: inline-block;
-  width: 16px;
+.alignment-sequence {
+  display: flex;
+  white-space: nowrap;
+}
+
+.alignment-sequence span {
+  width: 22px;
+  height: 28px;
+  line-height: 28px;
   text-align: center;
-  font-size: 13px;
+  flex: none;
+  font-size: 14px;
 }
 
-.mark-match {
+.match-base {
   color: var(--success);
 }
 
-.mark-mismatch {
+.mismatch-base {
   color: var(--danger);
-  opacity: 0.5;
 }
 
-.mark-gap {
+.gap-base {
   color: var(--textSecondary);
+}
+
+.match-symbol {
+  color: var(--success);
+  font-weight: bold;
+}
+
+.gap-symbol {
+  color: var(--textSecondary);
+}
+
+.mismatch-symbol {
+  color: var(--danger);
+}
+
+.sequence-container {
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .mismatch-positions {
@@ -377,7 +437,7 @@ function identityColor(val: number): string {
     grid-template-columns: 1fr;
   }
 
-  .alignment-track {
+  .alignment-box {
     padding: 12px;
   }
 }

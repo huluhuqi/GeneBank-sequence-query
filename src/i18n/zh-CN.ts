@@ -234,8 +234,10 @@ export default {
     identityLabel: '一致性',
     matchLabel: '匹配数',
     mismatchLabel: '错配数',
+    gapLabel: '空位',
     refRangeLabel: '参考位置',
     scoreLabel: '评分',
+    queryCoverageLabel: 'Query 覆盖率',
     mismatchAt: '错配位置',
     alignmentUnavailable: '序列对齐详情不可用（未找到原始序列数据）',
     columns: {

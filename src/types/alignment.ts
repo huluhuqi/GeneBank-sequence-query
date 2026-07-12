@@ -45,4 +45,8 @@ export interface AlignmentResult {
   confidence?: 'High' | 'Medium' | 'Low'
   /** 算法间是否存在冲突 */
   conflict?: boolean
+  /** 是否为环状序列（质粒）跨 origin 比对 */
+  circular?: boolean
+  /** 是否跨越环状序列的 origin（起点/终点边界） */
+  crossOrigin?: boolean
 }

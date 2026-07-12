@@ -234,8 +234,10 @@ export default {
     identityLabel: 'Identity',
     matchLabel: 'Matches',
     mismatchLabel: 'Mismatches',
+    gapLabel: 'Gaps',
     refRangeLabel: 'Ref Range',
     scoreLabel: 'Score',
+    queryCoverageLabel: 'Query Coverage',
     mismatchAt: 'Mismatch at',
     alignmentUnavailable: 'Alignment detail unavailable (original sequence not found)',
     columns: {

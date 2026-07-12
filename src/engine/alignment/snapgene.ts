@@ -4,6 +4,11 @@ import { getCache, setCache } from './cache'
 import { reverseComplement } from '../sequence/reverseComplement'
 import { calculateCoordinates } from './coordinate'
 import { calculateIdentity } from './statistics'
+import {
+  extendCircularReference,
+  normalizeCircularPosition,
+  shouldTryCircular,
+} from './circular'
 
 /** DP 矩阵最大单元格数，超过则跳过 DP（10M ≈ 3162bp × 3162bp）
  *
@@ -239,7 +244,7 @@ function snapgeneCore(
     }
   }
 
-  // identity：统一公式 match / (match + mismatch + gap) × 100
+  // identity：match / (match + mismatch + gap) × 100（gap 纳入分母）
   const identity = calculateIdentity(match, mismatch, gap)
 
   // similarity：错配算 0.5 权重，gap 不计入
@@ -309,9 +314,13 @@ function snapgeneCore(
     length: coords.referenceEnd - coords.referenceStart + 1,
     queryStart: coords.queryStart,
     queryEnd: coords.queryEnd,
+    match,
+    mismatch,
+    gap,
+    identity,
     dpTracebackStartI: bestI,
     dpTracebackEndI: i,
-    note: 'coords 为 1-based，dp 索引为 0-based',
+    note: 'coords 为 1-based，gap 不计入坐标',
   })
 
   return {
@@ -421,6 +430,78 @@ export function snapgeneAlignment(
   const isRC = alignmentScore(rc) > alignmentScore(normal)
   const best = isRC ? rc : normal
 
+  // 显式标注 orientation 类型，避免推断为 string
+  const orientation: 'Forward' | 'Reverse Complement' = isRC
+    ? 'Reverse Complement'
+    : 'Forward'
+  let bestResult = {
+    ...best,
+    orientation,
+    circular: false,
+    crossOrigin: false,
+  }
+
+  // =========================
+  // 环状模式（质粒 DNA 跨 origin 比对）
+  //
+  // 对短 Query（≤500bp）尝试环状模式：
+  // - 扩展 reference 末尾追加 query 长度的头部
+  // - 运行一次 DP（而非遍历所有起点）
+  // - 如果命中在扩展区域且得分更高，使用环状结果
+  // =========================
+  if (shouldTryCircular(query.length)) {
+    const { extendedReference, originalLength } = extendCircularReference(
+      reference,
+      query.length,
+    )
+
+    // 环状正向比对
+    const circularNormal = snapgeneCore(extendedReference, query)
+
+    // 环状反向互补比对
+    const circularRC = snapgeneCore(extendedReference, rcQuery)
+
+    // 选择环状模式中更好的方向
+    const isCircularRC =
+      alignmentScore(circularRC) > alignmentScore(circularNormal)
+    const circularBest = isCircularRC ? circularRC : circularNormal
+
+    // 比较环状模式和线性模式
+    if (alignmentScore(circularBest) > alignmentScore(best)) {
+      // 环状模式更好，检查是否跨越 origin
+      const refEnd = circularBest.referenceEnd ?? 0
+      const refStart = circularBest.referenceStart ?? 0
+
+      const { start, end, crossOrigin } = normalizeCircularPosition(
+        refStart,
+        refEnd,
+        originalLength,
+      )
+
+      const circularOrientation: 'Forward' | 'Reverse Complement' =
+        isCircularRC ? 'Reverse Complement' : 'Forward'
+
+      bestResult = {
+        ...circularBest,
+        orientation: circularOrientation,
+        referenceStart: start,
+        referenceEnd: end,
+        circular: true,
+        crossOrigin,
+      }
+
+      console.log('[SnapGene] circular mode hit', {
+        originalLength,
+        extendedRefStart: refStart,
+        extendedRefEnd: refEnd,
+        normalizedStart: start,
+        normalizedEnd: end,
+        crossOrigin,
+        orientation: bestResult.orientation,
+      })
+    }
+  }
+
   const result: AlignmentResult = {
     id: crypto.randomUUID(),
     referenceName: '',
@@ -428,8 +509,19 @@ export function snapgeneAlignment(
     referenceSequence: reference,
     querySequence: query,
     method: 'SnapGene',
-    ...best,
-    orientation: isRC ? 'Reverse Complement' : 'Forward',
+    ...bestResult,
+  }
+
+  // =========================
+  // Reverse Complement 坐标方向修正
+  //
+  // SnapGene 显示逻辑：RC 方向时 Reference 位置显示为 end → start
+  // 例如：RC 16743 → 16723（从大到小，表示反向读取）
+  // =========================
+  if (result.orientation === 'Reverse Complement') {
+    const temp = result.referenceStart
+    result.referenceStart = result.referenceEnd
+    result.referenceEnd = temp
   }
 
   // =========================
